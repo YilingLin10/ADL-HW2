@@ -24,6 +24,7 @@ import sys
 from dataclasses import dataclass, field
 from itertools import chain
 from typing import Optional, Union
+import json
 
 import datasets
 import numpy as np
@@ -43,11 +44,12 @@ from transformers import (
 )
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.trainer_utils import get_last_checkpoint
-from transformers.utils import PaddingStrategy, check_min_version
+from transformers.file_utils import PaddingStrategy
+from transformers.utils import check_min_version
 
 
-# Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.18.0.dev0")
+# # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
+# check_min_version("4.18.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ class DataTrainingArguments:
         default=None,
         metadata={"help": "An optional input evaluation data file to evaluate the perplexity on (a text file)."},
     )
+    context_file: Optional[str] = field(default=None, metadata={"help": "Path to the context file."})
     overwrite_cache: bool = field(
         default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
     )
@@ -262,14 +265,26 @@ def main():
 
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
-    if data_args.train_file is not None or data_args.validation_file is not None:
-        data_files = {}
-        if data_args.train_file is not None:
-            data_files["train"] = data_args.train_file
-        if data_args.validation_file is not None:
-            data_files["validation"] = data_args.validation_file
-        extension = data_args.train_file.split(".")[-1]
-        raw_datasets = load_dataset(extension, data_files=data_files, cache_dir=model_args.cache_dir)
+    if data_args.train_file is not None and data_args.validation_file is not None:
+        data_files = {'train': data_args.train_file, 'validation': data_args.validation_file}
+        for split, file_path in data_files.items():
+            f = open(file_path, 'r')
+            dataset = json.loads(f.read())
+            out_path = './data/'+ f'{split}.json'
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            output_file = open(out_path, 'w')
+            for dic in dataset:
+                json_dic = json.dumps(dic, ensure_ascii=False)
+                output_file.write(json_dic)
+                output_file.write('\n')
+            
+        data_files_p = {'train': './data/train.json', 'validation': './data/validation.json'}
+        raw_datasets = load_dataset('json', data_files=data_files_p, cache_dir=model_args.cache_dir)
+        
+        ### Add 'label' column to datasets
+        for split in ['train', 'validation']:
+            labels= [paragraphs_idx.index(relevant) for paragraphs_idx, relevant in zip(raw_datasets[split]["paragraphs"], raw_datasets[split]["relevant"])]
+            raw_datasets[split] = raw_datasets[split].add_column('label', labels)
     else:
         # Downloading and loading the swag dataset from the hub.
         raw_datasets = load_dataset("swag", "regular", cache_dir=model_args.cache_dir)
@@ -303,19 +318,14 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
     )
 
-    # When using your own dataset or a different dataset from swag, you will probably need to change this.
-    ending_names = [f"ending{i}" for i in range(4)]
-    context_name = "sent1"
-    question_header_name = "sent2"
-
     if data_args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
-        if max_seq_length > 1024:
+        if max_seq_length > 512:
             logger.warning(
                 f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
                 "Picking 1024 instead. You can change that default value by passing --max_seq_length xxx."
             )
-            max_seq_length = 1024
+            max_seq_length = 512
     else:
         if data_args.max_seq_length > tokenizer.model_max_length:
             logger.warning(
@@ -326,10 +336,20 @@ def main():
 
     # Preprocessing the datasets.
     def preprocess_function(examples):
+        # first_sentences = [[context] * 4 for context in examples[context_name]]
+        # question_headers = examples[question_header_name]
+        # second_sentences = [
+        #     [f"{header} {examples[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
+        # ]
+        # parse context.json
+        context_file = open(data_args.context_file, 'r')
+        contexts = json.loads(context_file.read())
+        
+        context_name = "question"
+        paragraph_idx = "paragraphs"
         first_sentences = [[context] * 4 for context in examples[context_name]]
-        question_headers = examples[question_header_name]
         second_sentences = [
-            [f"{header} {examples[end][i]}" for end in ending_names] for i, header in enumerate(question_headers)
+            [f"{contexts[int(idx)]}" for idx in p_indices] for p_indices in examples[paragraph_idx]
         ]
 
         # Flatten out
@@ -430,19 +450,19 @@ def main():
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
 
-    kwargs = dict(
-        finetuned_from=model_args.model_name_or_path,
-        tasks="multiple-choice",
-        dataset_tags="swag",
-        dataset_args="regular",
-        dataset="SWAG",
-        language="en",
-    )
+    # kwargs = dict(
+    #     finetuned_from=model_args.model_name_or_path,
+    #     tasks="multiple-choice",
+    #     dataset_tags="swag",
+    #     dataset_args="regular",
+    #     dataset="SWAG",
+    #     language="en",
+    # )
 
-    if training_args.push_to_hub:
-        trainer.push_to_hub(**kwargs)
-    else:
-        trainer.create_model_card(**kwargs)
+    # if training_args.push_to_hub:
+    #     trainer.push_to_hub(**kwargs)
+    # else:
+    #     trainer.create_model_card(**kwargs)
 
 
 def _mp_fn(index):
