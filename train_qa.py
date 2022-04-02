@@ -515,28 +515,6 @@ def main():
             max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
             eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    if training_args.do_predict:
-        if "test" not in raw_datasets:
-            raise ValueError("--do_predict requires a test dataset")
-        predict_examples = test_dataset
-        if data_args.max_predict_samples is not None:
-            # We will select sample from whole data
-            predict_examples = predict_examples.select(range(data_args.max_predict_samples))
-        # Predict Feature Creation
-        with training_args.main_process_first(desc="prediction dataset map pre-processing"):
-            predict_dataset = predict_examples.map(
-                prepare_validation_features,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on prediction dataset",
-            )
-        if data_args.max_predict_samples is not None:
-            # During Feature creation dataset samples might increase, we will select required samples again
-            max_predict_samples = min(len(predict_dataset), data_args.max_predict_samples)
-            predict_dataset = predict_dataset.select(range(max_predict_samples))
-
     # Data collator
     # We have already padded to max length if the corresponding flag is True, otherwise we need to pad in the data
     # collator.

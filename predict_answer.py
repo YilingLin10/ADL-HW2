@@ -24,6 +24,8 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 import json
+import pandas as pd
+import csv
 
 import datasets
 from datasets import load_dataset, load_metric
@@ -269,24 +271,27 @@ def main():
             data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir
         )
     else:
-        f = open(data_args.test_file, 'r')
-        dataset = json.loads(f.read())
-        out_path = './data/test.json'
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        output_file = open(out_path, 'w')
-        for dic in dataset:
-            json_dic = json.dumps(dic, ensure_ascii=False)
-            output_file.write(json_dic)
-            output_file.write('\n')
-        
-        test_file = {'test': './data/test.json'}
-        test_dataset = load_dataset('json', data_files=test_file, cache_dir=model_args.cache_dir)
+        data_files = {'test': data_args.test_file}
+        for split, file_path in data_files.items():
+            f = open(file_path, 'r')
+            dataset = json.loads(f.read())
+            new_dataset = {"data": dataset}
+            
+            with open('./data/'+ f'{split}_p.json', 'w') as outfile:
+                json.dump(new_dataset, outfile, ensure_ascii=False)
+
+        data_files_p = {'test': './data/test_p.json'}
+        test_dataset = load_dataset('json', data_files=data_files_p, field='data', cache_dir=model_args.cache_dir)
         
         ### Add 'context' column to "test" dataset
-        relevant_file = open(data_args.relevant_file, 'r')
-        relevants = json.laods(relevant_file.read())
-        context= [contexts[relevant] for relevant in test_dataset["relevant"]]
-        test_dataset = test_dataset.add_column('context', context)
+        context_file = open(data_args.context_file, 'r')
+        contexts = json.loads(context_file.read())
+        
+        df = pd.read_csv(data_args.relevant_file)
+        relevants = df['relevant'].to_list()
+        context= [contexts[relevant] for relevant in relevants]
+        print(len(context))
+        test_dataset = test_dataset['test'].add_column('context', context)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -418,26 +423,6 @@ def main():
         else DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8 if training_args.fp16 else None)
     )
 
-    # Post-processing:
-    def post_processing_function(examples, features, predictions, stage="eval"):
-        # Post-processing: we match the start logits and end logits to answers in the original context.
-        predictions = postprocess_qa_predictions(
-            examples=examples,
-            features=features,
-            predictions=predictions,
-            n_best_size=data_args.n_best_size,
-            max_answer_length=data_args.max_answer_length,
-            null_score_diff_threshold=data_args.null_score_diff_threshold,
-            output_dir=training_args.output_dir,
-            log_level=log_level,
-            prefix=stage,
-        )
-        
-        formatted_predictions = [{"id": k, "answer": v} for k, v in predictions.items()]
-        return formatted_predictions
-
-    metric = load_metric("squad_v2" if data_args.version_2_with_negative else "squad")
-
     def compute_metrics(p: EvalPrediction):
         return metric.compute(predictions=p.predictions, references=p.label_ids)
 
@@ -447,21 +432,32 @@ def main():
         args=training_args,
         tokenizer=tokenizer,
         data_collator=data_collator,
-        post_process_function=post_processing_function,
         compute_metrics=compute_metrics,
     )
 
     # Prediction
     if training_args.do_predict:
         logger.info("*** Predict ***")
-        predictions,_,_ = trainer.predict(predict_dataset, predict_examples)
-     
+        output = trainer.predict(predict_dataset, predict_examples)
+        
+        predictions = postprocess_qa_predictions(
+            examples=predict_examples,
+            features=predict_dataset,
+            predictions=output.predictions,
+            n_best_size=data_args.n_best_size,
+            max_answer_length=data_args.max_answer_length,
+            null_score_diff_threshold=data_args.null_score_diff_threshold,
+            output_dir=training_args.output_dir,
+            log_level=log_level,
+        )
+        predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
+        print(len(predictions))
         ### Write predictions to a csv file
         with open(data_args.pred_file, 'w') as fp:
             writer = csv.writer(fp)
             writer.writerow(['id', 'answer'])
-            for pred in predictions.items():
-                writer.writerow([pred["id"], pred["answer"]])
+            for prediction in predictions:
+                writer.writerow([prediction["id"], prediction["prediction_text"]])
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)

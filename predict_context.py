@@ -172,19 +172,19 @@ def main():
     set_seed(testing_args.seed)
     
     if data_args.test_file is not None:
-        f = open(data_args.test_file, 'r')
-        dataset = json.loads(f.read())
-        out_path = './data/test.json'
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        output_file = open(out_path, 'w')
-        for dic in dataset:
-            json_dic = json.dumps(dic, ensure_ascii=False)
-            output_file.write(json_dic)
-            output_file.write('\n')
+        data_files = {'test': data_args.test_file}
+        for split, file_path in data_files.items():
+            f = open(file_path, 'r')
+            dataset = json.loads(f.read())
+            new_dataset = {"data": dataset}
             
-        data_files_p = {'test': './data/test.json'}
-        dataset = load_dataset('json', data_files=data_files_p, cache_dir=model_args.cache_dir)
-    
+            with open('./data/'+ f'{split}_p.json', 'w') as outfile:
+                json.dump(new_dataset, outfile, ensure_ascii=False)
+
+        data_files_p = {'test': './data/test_p.json'}
+        dataset = load_dataset('json', data_files=data_files_p, field='data', cache_dir=model_args.cache_dir)
+        
+        print('test dataset:', len(dataset['test']))
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -276,6 +276,7 @@ def main():
     
     # Make prediction
     raw_pred, _, _ = trainer.predict(test_dataset)
+    print(len(raw_pred))
     # Preprocess raw predictions
     y_pred = np.argmax(raw_pred, axis=1)
     pred_id = [id for id in test_dataset["id"]]
