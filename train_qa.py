@@ -267,7 +267,7 @@ def main():
     for split, file_path in data_files.items():
         f = open(file_path, 'r')
         dataset = json.loads(f.read())
-        out_path = './data/'+ f'{split}.json'
+        out_path = './data_p/'+ f'{split}.json'
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         output_file = open(out_path, 'w')
         for dic in dataset:
@@ -275,7 +275,7 @@ def main():
             output_file.write(json_dic)
             output_file.write('\n')
         
-    data_files_p = {'train': './data/train.json', 'validation': './data/validation.json'}
+    data_files_p = {'train': './data_p/train.json', 'validation': './data_p/validation.json'}
     raw_datasets = load_dataset('json', data_files=data_files_p, cache_dir=model_args.cache_dir)
     
     ### Add 'context' and 'answers' column to "train" & "validation" datasets
