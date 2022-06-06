@@ -177,11 +177,11 @@ def main():
             f = open(file_path, 'r')
             dataset = json.loads(f.read())
             new_dataset = {"data": dataset}
-            
-            with open('./data/'+ f'{split}_p.json', 'w') as outfile:
+            os.makedirs(os.path.dirname('./data_p/'), exist_ok=True)
+            with open('./data_p/'+ f'{split}_p.json', 'w') as outfile:
                 json.dump(new_dataset, outfile, ensure_ascii=False)
 
-        data_files_p = {'test': './data/test_p.json'}
+        data_files_p = {'test': './data_p/test_p.json'}
         dataset = load_dataset('json', data_files=data_files_p, field='data', cache_dir=model_args.cache_dir)
         
         print('test dataset:', len(dataset['test']))
