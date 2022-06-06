@@ -12,7 +12,7 @@ pip install -r requirements.txt
 * /path/to/context_file: path to your context file
 * /path/to/output_dir/ : path to your output directory
 ```
-!python3.8 train_mc.py  \
+python3.8 train_mc.py  \
   --model_name_or_path bert-base-chinese  \
   --do_train  \
   --train_file /path/to/train_file \
@@ -36,7 +36,7 @@ pip install -r requirements.txt
 * /path/to/context_file: path to your context file
 * /path/to/output_dir/ : path to your output directory
 ```
-!python3.8 train_qa.py  \
+python3.8 train_qa.py  \
   --model_name_or_path hfl/chinese-roberta-wwm-ext  \
   --do_train  \
   --train_file /path/to/train_file \
