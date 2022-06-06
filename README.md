@@ -1,6 +1,8 @@
 # ADL-HW2
 ## Kaggle link
 https://www.kaggle.com/competitions/ntu-adl-hw2-spring-2021/leaderboard
+## SPEC
+https://www.csie.ntu.edu.tw/~miulab/s110-adl/doc/A2_BERT.pdf
 ## Environment setup (Python 3.8):
 ```
 pip install -r requirements.txt
